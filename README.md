@@ -86,45 +86,54 @@ configure.
 
 ## Deploying (frontend + backend together, one host)
 
-PocketBase can serve the built React app itself — drop the production
-build into a `pb_public` folder next to the PocketBase binary and it's
-served as static files from the same process and the same origin as the
-API. That means one deploy, one URL, no CORS to think about.
+The repo includes a `Dockerfile` at the root that does everything for
+you: it builds the React app, downloads the correct Linux PocketBase
+binary, and puts the build output into `pb_public` so one container
+serves both the app and the API from one origin — no CORS, no separate
+hosts, no manual build step before deploying.
 
-```bash
-./build.sh
-```
+You do **not** need to run `build.sh` or commit a `pocketbase` binary for
+this path — Docker handles both during the build. (`build.sh` is still
+handy for quick local testing of the combined setup; see below.)
 
-This installs frontend deps, runs `vite build`, and copies the result into
-`backend/pb_public`. After that, `backend/` is a complete, self-contained
-app: the `pocketbase` binary + `pb_hooks/` + `pb_migrations/` +
-`pb_public/`.
-
-### Hosting it
+### Hosting it (Railway)
 
 PocketBase needs a host that keeps a process running and gives it a
 persistent disk (for its SQLite database and uploaded files) — this rules
-out pure static hosts like Netlify/Vercel for the backend part, since
-PocketBase isn't a serverless function. **Railway** and **Fly.io** are
-both good fits and have generous free/low-cost tiers. Steps for Railway:
+out pure static hosts like Netlify/Vercel, since PocketBase isn't a
+serverless function. **Railway** and **Fly.io** are both good fits.
+Steps for Railway:
 
-1. Push this repo to GitHub.
+1. Push this repo to GitHub, with the `Dockerfile` and `.dockerignore`
+   at the repo root (not inside `backend/`).
 2. In Railway, "New Project" → "Deploy from GitHub repo".
-3. Set the **root directory** to `backend`.
-4. Set a **start command**: `./pocketbase serve --http=0.0.0.0:$PORT`
-5. Add a **volume** mounted at `/app/pb_data` so your database and
+3. Leave the **root directory** as the repo root (blank) — Railway will
+   detect the `Dockerfile` automatically and switch to the Docker
+   builder. Do **not** set it to `backend`, and don't set a custom start
+   command — the Dockerfile's `CMD` handles that.
+4. Add a **volume** mounted at `/pb/pb_data` so your database and
    uploaded files survive redeploys.
-6. Set the environment variable `SUBMIT_TOKEN_SECRET` to a long random
+5. In the **Variables** tab, set `SUBMIT_TOKEN_SECRET` to a long random
    string (e.g. generate one with `openssl rand -hex 32`).
-7. Before your first deploy, run `./build.sh` locally and commit the
-   resulting `backend/pb_public` folder (or add a build step in Railway
-   that runs it — either works).
-8. Deploy. Railway gives you a `*.up.railway.app` URL — that's your whole
+6. Deploy. Railway gives you a `*.up.railway.app` URL — that's your whole
    app, frontend and API together.
 
-The same idea works on Fly.io or any VPS: run the `pocketbase` binary with
-a persistent volume for `pb_data`, put `pb_public` next to it, and expose
-port 8090 (or whatever `$PORT` your platform expects).
+The same idea works on Fly.io or any VPS that can run a Dockerfile: just
+make sure whatever persistent volume you attach is mounted at `/pb/pb_data`.
+
+### Testing the combined build locally (optional)
+
+```bash
+./build.sh
+cd backend
+./pocketbase serve
+```
+
+This does locally what the Dockerfile does on Railway — builds the
+frontend and serves it alongside the API from one process — so you can
+sanity-check it before pushing. You'll need the PocketBase binary for
+your OS in `backend/` for this (see "Local development" above); it's
+gitignored and only used for this local check, not for deployment.
 
 ### Environment variables
 
